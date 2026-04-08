@@ -5,7 +5,7 @@ const userService = {
     /* ---------------- GET PROFILE ---------------- */
     async getMyProfile(userId) {
         const result = await pool.query(
-            "SELECT id, name, phone, created_at FROM users WHERE id = $1",
+            "SELECT id, name, phone, role, created_at FROM users WHERE id = $1",
             [userId]
         );
 

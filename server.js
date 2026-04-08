@@ -5,6 +5,7 @@ import orderRoutes from './routes/order.routes.js';
 import errorHandler from './middlewares/error.middleware.js';
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./config/swagger.js";
 
@@ -21,13 +22,14 @@ app.use(express.json());
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.get('/', (req, res) => {
-  res.send('ProductCart backend running');
+  res.send('Manakart backend running');
 });
 
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // global error handler (must be after routes)
 app.use(errorHandler);

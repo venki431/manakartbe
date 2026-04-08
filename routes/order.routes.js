@@ -1,11 +1,17 @@
 import express from "express";
-import {createOrder, getMyOrders, getAllOrders} from "../controllers/order.controller.js";
+import { createOrder, getMyOrders, getAllOrders, getOrderById, updateOrderStatus } from "../controllers/order.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
+import { requireAdmin } from "../middlewares/admin.middleware.js";
 
 const router = express.Router();
 
+// Customer routes
 router.get("/", authenticate, getMyOrders);
 router.post("/create", authenticate, createOrder);
-router.get("/all", authenticate, getAllOrders);
+
+// Admin routes
+router.get("/all", authenticate, requireAdmin, getAllOrders);
+router.get("/:id", authenticate, getOrderById);
+router.patch("/:id/status", authenticate, requireAdmin, updateOrderStatus);
 
 export default router;
