@@ -1,9 +1,13 @@
 import pool from "../config/db.js";
 import notificationService from "./notification.service.js";
+import { computeDeliveryDate, DELIVERY_SLOT } from "./delivery.js";
 
-const MIN_ORDER_VALUE = process.env.MIN_ORDER_VALUE || 350;
-const DELIVERY_CHARGE = process.env.DELIVERY_CHARGE || 50;
-const FREE_DELIVERY_MIN = process.env.FREE_DELIVERY_MIN || 500;
+// Env vars are always strings — coerce to Number so they add numerically
+// (otherwise `subtotal + DELIVERY_CHARGE` becomes string concatenation, e.g.
+// 364 + "50" = "36450" instead of 414).
+const MIN_ORDER_VALUE = Number(process.env.MIN_ORDER_VALUE) || 350;
+const DELIVERY_CHARGE = Number(process.env.DELIVERY_CHARGE) || 50;
+const FREE_DELIVERY_MIN = Number(process.env.FREE_DELIVERY_MIN) || 500;
 
 const ALLOWED_PINCODES = ["500097"];
 
@@ -73,13 +77,17 @@ const orderService = {
 
     const grandTotal = subtotal + deliveryCharge;
 
+    /* ---------------- DELIVERY SCHEDULING ---------------- */
+    // Before 11 AM IST -> this evening; after -> next evening.
+    const deliveryDate = computeDeliveryDate();
+
     /* ---------------- INSERT ORDER ---------------- */
 
     const orderResult = await pool.query(
       `
       INSERT INTO orders
-      (user_id, address_id, items, subtotal, delivery_charge, grand_total, pincode, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      (user_id, address_id, items, subtotal, delivery_charge, grand_total, pincode, status, delivery_date, delivery_slot)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
       `,
       [
@@ -90,7 +98,9 @@ const orderService = {
         deliveryCharge,
         grandTotal,
         pincode,
-        "pending"
+        "pending",
+        deliveryDate,
+        DELIVERY_SLOT
       ]
     );
 
@@ -130,7 +140,8 @@ const orderService = {
   async getAllOrders() {
     const result = await pool.query(
       `SELECT o.*, u.name as customer_name, u.phone as customer_phone,
-              a.house, a.street, a.area, a.pincode as addr_pincode, a.landmark
+              a.house, a.street, a.area, a.pincode as addr_pincode, a.landmark,
+              a.latitude, a.longitude
        FROM orders o
        LEFT JOIN users u ON o.user_id = u.id
        LEFT JOIN addresses a ON o.address_id = a.id
@@ -143,7 +154,8 @@ const orderService = {
   async getOrderById(orderId) {
     const result = await pool.query(
       `SELECT o.*, u.name as customer_name, u.phone as customer_phone,
-              a.house, a.street, a.area, a.pincode as addr_pincode, a.landmark
+              a.house, a.street, a.area, a.pincode as addr_pincode, a.landmark,
+              a.latitude, a.longitude
        FROM orders o
        LEFT JOIN users u ON o.user_id = u.id
        LEFT JOIN addresses a ON o.address_id = a.id

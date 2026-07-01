@@ -2,6 +2,21 @@ import pool from "../config/db.js";
 
 const userService = {
 
+    /* ---------------- ADMIN: LIST ALL USERS ---------------- */
+    async getAllUsers() {
+        const result = await pool.query(
+            `SELECT u.id, u.name, u.phone, u.role, u.created_at,
+                    COUNT(o.id)::int                     AS order_count,
+                    COALESCE(SUM(o.grand_total), 0)::int AS total_spent,
+                    MAX(o.created_at)                    AS last_order_at
+             FROM users u
+             LEFT JOIN orders o ON o.user_id = u.id
+             GROUP BY u.id
+             ORDER BY u.created_at DESC`
+        );
+        return result.rows;
+    },
+
     /* ---------------- GET PROFILE ---------------- */
     async getMyProfile(userId) {
         const result = await pool.query(
@@ -28,7 +43,7 @@ const userService = {
 
     /* ---------------- CREATE ADDRESS ---------------- */
     async createAddress(userId, data) {
-        const { house, street, area, pincode, landmark, is_default = false } = data;
+        const { house, street, area, pincode, landmark, is_default = false, latitude, longitude } = data;
 
         if (!house || !street || !area || !pincode) {
             throw new Error("All required address fields must be filled");
@@ -43,10 +58,11 @@ const userService = {
 
         const result = await pool.query(
             `INSERT INTO addresses
-             (user_id, house, street, area, pincode, landmark, is_default)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             (user_id, house, street, area, pincode, landmark, is_default, latitude, longitude)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING *`,
-            [userId, house, street, area, pincode, landmark || null, is_default]
+            [userId, house, street, area, pincode, landmark || null, is_default,
+             latitude ?? null, longitude ?? null]
         );
 
         return result.rows[0];
@@ -54,7 +70,7 @@ const userService = {
 
     /* ---------------- UPDATE ADDRESS ---------------- */
     async updateAddress(userId, addressId, data) {
-        const { house, street, area, pincode, landmark, is_default } = data;
+        const { house, street, area, pincode, landmark, is_default, latitude, longitude } = data;
 
         const existing = await pool.query(
             "SELECT * FROM addresses WHERE id = $1 AND user_id = $2",
@@ -72,13 +88,18 @@ const userService = {
             );
         }
 
+        // Keep any previously-captured location if the update doesn't include one.
+        const newLat = latitude ?? existing.rows[0].latitude;
+        const newLng = longitude ?? existing.rows[0].longitude;
+
         const result = await pool.query(
             `UPDATE addresses
              SET house=$1, street=$2, area=$3, pincode=$4,
-                 landmark=$5, is_default=$6
-             WHERE id=$7
+                 landmark=$5, is_default=$6, latitude=$7, longitude=$8
+             WHERE id=$9
              RETURNING *`,
-            [house, street, area, pincode, landmark || null, is_default || false, addressId]
+            [house, street, area, pincode, landmark || null, is_default || false,
+             newLat, newLng, addressId]
         );
 
         return result.rows[0];
