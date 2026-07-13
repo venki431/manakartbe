@@ -29,8 +29,7 @@ const pool = new Pool({
 const SERVICEABLE_PINCODE = '500097';
 
 const USERS = [
-  { name: 'Admin',     phone: '9999999999', password: 'admin123',    role: 'admin' },
-  { name: 'Test Customer', phone: '8888888888', password: 'customer123', role: 'customer' },
+  { name: 'Admin',     phone: '9640082321', password: 'cvenki@123',    role: 'admin' },
 ];
 
 // Common fruits available in Indian markets, with realistic ₹/kg rates.
@@ -135,9 +134,6 @@ async function main() {
     await seedAddress(users.customer);
     await seedProducts();
     console.log('\n✅ Seed complete.');
-    console.log('\nLogin credentials:');
-    console.log('  Admin    -> phone 9999999999  password admin123');
-    console.log('  Customer -> phone 8888888888  password customer123');
   } catch (err) {
     console.error('\n❌ Seed failed:', err.message);
     process.exitCode = 1;

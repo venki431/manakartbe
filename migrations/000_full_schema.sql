@@ -12,6 +12,13 @@
 -- Idempotent: safe to re-run (uses IF NOT EXISTS everywhere).
 -- ============================================================================
 
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS addresses CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS notifications CASCADE;
+
+
 -- Needed for gen_random_uuid(). On Supabase this is usually already enabled.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
