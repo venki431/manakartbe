@@ -72,8 +72,16 @@ const getMyUnreadCount = async (req, res, next) => {
 
 const markMyAsRead = async (req, res, next) => {
   try {
-    await notificationService.markAsRead(req.params.id);
-    res.status(200).json({ message: "Notification marked as read" });
+    const userId = req.user.userId;
+
+    await notificationService.markMyAsRead(
+      userId,
+      req.params.id
+    );
+
+    res.status(200).json({
+      message: "Notification marked as read",
+    });
   } catch (error) {
     next(error);
   }

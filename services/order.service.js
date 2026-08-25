@@ -1,6 +1,7 @@
 import pool from "../config/db.js";
 import notificationService from "./notification.service.js";
 import { computeDeliveryDate, DELIVERY_SLOT } from "./delivery.js";
+import { emitNewOrder } from "./socket.service.js";
 
 // Env vars are always strings — coerce to Number so they add numerically
 // (otherwise `subtotal + DELIVERY_CHARGE` becomes string concatenation, e.g.
@@ -78,7 +79,7 @@ const orderService = {
     const grandTotal = subtotal + deliveryCharge;
 
     /* ---------------- DELIVERY SCHEDULING ---------------- */
-    // Before 11 AM IST -> this evening; after -> next evening.
+    // Before 02:00 PM IST -> this evening; after -> next evening.
     const deliveryDate = computeDeliveryDate();
 
     /* ---------------- INSERT ORDER ---------------- */
@@ -105,6 +106,15 @@ const orderService = {
     );
 
     const order = orderResult.rows[0];
+    console.log("📦 New order created:", order.id);
+    emitNewOrder({
+      id: order.id,
+      grand_total: order.grand_total,
+      status: order.status,
+      delivery_date: order.delivery_date,
+      delivery_slot: order.delivery_slot,
+    });
+
 
     /* ---------------- NOTIFY ADMIN ---------------- */
     const itemNames = items.map(i => i.name).join(", ");
