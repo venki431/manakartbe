@@ -66,6 +66,20 @@ const notificationService = {
     );
   },
 
+  async markMyAsRead(userId, notificationId) {
+    const result = await pool.query(
+      `UPDATE notifications
+       SET is_read = true
+       WHERE id = $1
+         AND user_id = $2`,
+      [notificationId, userId]
+    );
+  
+    if (result.rowCount === 0) {
+      throw new Error("Notification not found");
+    }
+  },
+
   async markAllAsReadAdmin() {
     await pool.query("UPDATE notifications SET is_read = true WHERE user_id IS NULL AND is_read = false");
   },

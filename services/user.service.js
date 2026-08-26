@@ -45,8 +45,16 @@ const userService = {
     async createAddress(userId, data) {
         const { house, street, area, pincode, landmark, is_default = false, latitude, longitude } = data;
 
-        if (!house || !street || !area || !pincode) {
-            throw new Error("All required address fields must be filled");
+        if (!house || !street || !area || !pincode || !landmark) {
+            throw new Error("All address fields are required");
+        }
+        
+        if (!/^\d{6}$/.test(pincode)) {
+            throw new Error("Pincode must be exactly 6 digits");
+        }
+        
+        if (latitude == null || longitude == null) {
+            throw new Error("Location coordinates are required");
         }
 
         if (is_default) {
@@ -71,6 +79,18 @@ const userService = {
     /* ---------------- UPDATE ADDRESS ---------------- */
     async updateAddress(userId, addressId, data) {
         const { house, street, area, pincode, landmark, is_default, latitude, longitude } = data;
+
+        if (!house || !street || !area || !pincode || !landmark) {
+            throw new Error("All address fields are required");
+        }
+        
+        if (!/^\d{6}$/.test(pincode)) {
+            throw new Error("Pincode must be exactly 6 digits");
+        }
+        
+        if (latitude == null || longitude == null) {
+            throw new Error("Location coordinates are required");
+        }
 
         const existing = await pool.query(
             "SELECT * FROM addresses WHERE id = $1 AND user_id = $2",

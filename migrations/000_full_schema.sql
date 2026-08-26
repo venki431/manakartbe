@@ -138,6 +138,45 @@ CREATE INDEX IF NOT EXISTS idx_notifications_is_read    ON notifications(is_read
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id    ON notifications(user_id);
 
+
+CREATE TABLE IF NOT EXISTS password_reset_otps (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  user_id UUID NOT NULL
+    REFERENCES users(id)
+    ON DELETE CASCADE,
+
+  otp_hash TEXT NOT NULL,
+
+  expires_at TIMESTAMP NOT NULL,
+
+  attempts INTEGER NOT NULL DEFAULT 0,
+
+  verified BOOLEAN NOT NULL DEFAULT false,
+
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_otps_user_id
+  ON password_reset_otps(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_otps_expires_at
+  ON password_reset_otps(expires_at);
+
+
+CREATE TABLE IF NOT EXISTS password_reset_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  user_id UUID NOT NULL
+    REFERENCES users(id)
+    ON DELETE CASCADE,
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_requests_user_time
+  ON password_reset_requests(user_id, created_at DESC);
+
 -- ============================================================================
 -- OPTIONAL: promote a user to admin (needed for admin-only endpoints).
 -- Sign up via the API first, then run:

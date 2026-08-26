@@ -4,7 +4,7 @@
 // window. Orders placed before the cutoff (IST) are delivered the SAME evening;
 // after the cutoff they roll to the NEXT evening.
 
-export const CUTOFF_HOUR_IST = 11;          // 11:00 AM India time
+export const CUTOFF_HOUR_IST = 2;          // 2:00 AM India time
 export const DELIVERY_SLOT = "evening";     // 4 PM – 8 PM
 export const IST_OFFSET_MINUTES = 5 * 60 + 30; // UTC+5:30, no DST in India
 
@@ -15,7 +15,7 @@ function nowIST(now = new Date()) {
 
 /**
  * Returns the scheduled delivery date as a 'YYYY-MM-DD' string (IST calendar).
- * Before 11 AM IST -> today; at/after -> tomorrow.
+ * Before 02:00 PM IST -> today; at/after -> tomorrow.
  */
 export function computeDeliveryDate(now = new Date()) {
   const ist = nowIST(now);

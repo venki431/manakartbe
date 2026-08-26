@@ -11,7 +11,7 @@ router.post("/create", authenticate, createOrder);
 
 // Admin routes
 router.get("/all", authenticate, requireAdmin, getAllOrders);
-router.get("/:id", authenticate, getOrderById);
+router.get("/:id", authenticate, requireAdmin, getOrderById);
 router.patch("/:id/status", authenticate, requireAdmin, updateOrderStatus);
 
 export default router;
