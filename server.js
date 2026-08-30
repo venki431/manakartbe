@@ -58,6 +58,10 @@ app.get("/", (req, res) => {
   res.send("Manakart backend running");
 });
 
+app.get("/api/health", (req, res) => {
+  res.send("Manakart backend API running");
+});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
