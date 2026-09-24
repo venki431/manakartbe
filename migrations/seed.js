@@ -1,145 +1,164 @@
-// ============================================================================
-// Manakart Backend — Seed Script
-// ----------------------------------------------------------------------------
-// Populates a fresh database with sample data so you can test immediately:
-//   - 1 admin user   (phone 9999999999 / password admin123)
-//   - 1 customer user (phone 8888888888 / password customer123)
-//   - 1 serviceable address for the customer (pincode 500097)
-//   - a handful of fruit products
-//
-// Run AFTER 000_full_schema.sql:
-//   node migrations/seed.js
-//
-// Idempotent-ish: users are upserted by phone; products are only inserted
-// if the products table is empty (re-running won't duplicate them).
-// ============================================================================
-
-import '../config/env.js';
-import bcrypt from 'bcrypt';
-import pkg from 'pg';
-
+import "../config/env.js";
+import bcrypt from "bcrypt";
+import pkg from "pg";
 const { Pool } = pkg;
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
-
-// Only pincode(s) the app services — see ALLOWED_PINCODES in order.service.js
-const SERVICEABLE_PINCODE = '500097';
-
-const USERS = [
-  { name: 'Admin',     phone: '9640082321', password: 'cvenki@123',    role: 'admin' },
+const slugify = (name) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+const image = (name) => `/fruits_images/${name.toLowerCase()}.webp`;
+const fruitPrices = {
+  Banana: 60,
+  Apple: 180,
+  Mango: 150,
+  Orange: 90,
+  Pomegranate: 220,
+  "Green Grapes": 120,
+  Watermelon: 40,
+  Papaya: 55,
+  Guava: 80,
+  Pineapple: 70,
+  "Black Grapes": 140,
+  "Sweet Lime": 70,
+  Muskmelon: 50,
+  Pear: 150,
+  Sapota: 90,
+  Coconut: 45,
+  "Custard Apple": 160,
+  Strawberry: 300,
+};
+const weightVariants = (price) => [
+  ["weight", 250, "250g", Math.round(price / 4)],
+  ["weight", 500, "500g", Math.round(price / 2)],
+  ["weight", 1000, "1kg", price],
 ];
-
-// Common fruits available in Indian markets, with realistic ₹/kg rates.
-// Ordered by popularity — most-bought everyday fruits first, seasonal/exotic
-// last. The list index becomes each product's sort_order, so the shop shows
-// popular fruits first (see product.service.js ORDER BY sort_order).
-// Names are chosen to match the FRUIT_EMOJIS map on the frontend.
-const PRODUCTS = [
-  // ── Everyday best-sellers ──
-  { name: 'Banana',        price_per_kg: 60,  available: true },
-  { name: 'Apple',         price_per_kg: 180, available: true },
-  { name: 'Mango',         price_per_kg: 150, available: true },
-  { name: 'Orange',        price_per_kg: 90,  available: true },
-  { name: 'Pomegranate',   price_per_kg: 220, available: true },
-  { name: 'Green Grapes',  price_per_kg: 120, available: true },
-  { name: 'Watermelon',    price_per_kg: 40,  available: true },
-  { name: 'Papaya',        price_per_kg: 55,  available: true },
-  // ── Popular ──
-  { name: 'Guava',         price_per_kg: 80,  available: true },
-  { name: 'Pineapple',     price_per_kg: 70,  available: true },
-  { name: 'Black Grapes',  price_per_kg: 140, available: true },
-  { name: 'Sweet Lime',    price_per_kg: 70,  available: true },
-  { name: 'Muskmelon',     price_per_kg: 50,  available: true },
-  { name: 'Pear',          price_per_kg: 150, available: true },
-  { name: 'Sapota',        price_per_kg: 90,  available: true },
-  { name: 'Coconut',       price_per_kg: 45,  available: true },
-  // ── Seasonal / exotic ──
-  { name: 'Custard Apple', price_per_kg: 160, available: true },
-  { name: 'Litchi',        price_per_kg: 180, available: true },
-  { name: 'Jamun',         price_per_kg: 200, available: true },
-  { name: 'Strawberry',    price_per_kg: 300, available: true },
-  { name: 'Kiwi',          price_per_kg: 260, available: true },
-  { name: 'Dragon Fruit',  price_per_kg: 280, available: true },
-  { name: 'Amla',          price_per_kg: 70,  available: true },
-  { name: 'Fig',           price_per_kg: 240, available: false },
-];
-
-async function seedUsers() {
-  const result = {};
-  for (const u of USERS) {
-    const hash = await bcrypt.hash(u.password, 10);
-    // Upsert by phone: keeps the script re-runnable without duplicate errors.
-    const res = await pool.query(
-      `INSERT INTO users (name, phone, password_hash, role)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (phone) DO UPDATE
-         SET name = EXCLUDED.name,
-             password_hash = EXCLUDED.password_hash,
-             role = EXCLUDED.role
-       RETURNING id, name, phone, role`,
-      [u.name, u.phone, hash, u.role]
-    );
-    result[u.role] = res.rows[0];
-    console.log(`  user: ${res.rows[0].name} (${res.rows[0].phone}) [${res.rows[0].role}]`);
-  }
-  return result;
-}
-
-async function seedAddress(customer) {
-  if (!customer) return;
-  // Only add a default address if the customer has none yet.
-  const existing = await pool.query(
-    'SELECT id FROM addresses WHERE user_id = $1 LIMIT 1',
-    [customer.id]
+const choppedPrices = {
+  Banana: [25, 45],
+  Watermelon: [20, 35],
+  Pineapple: [30, 55],
+  Papaya: [20, 38],
+  Muskmelon: [20, 35],
+  Apple: [45, 85],
+  Orange: [30, 55],
+  Mango: [40, 75],
+  Guava: [30, 55],
+  Pear: [45, 85],
+};
+async function upsertProduct(client, categoryId, name, variants, sortOrder) {
+  const {
+    rows: [product],
+  } = await client.query(
+    `INSERT INTO products (category_id,name,slug,image_url,sort_order) VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (slug) DO UPDATE SET category_id=EXCLUDED.category_id,name=EXCLUDED.name,image_url=EXCLUDED.image_url,sort_order=EXCLUDED.sort_order RETURNING id`,
+    [
+      categoryId,
+      name,
+      slugify(name),
+      image(name),
+      sortOrder,
+    ]
   );
-  if (existing.rows.length > 0) {
-    console.log('  address: already present, skipping');
-    return;
-  }
-  const res = await pool.query(
-    `INSERT INTO addresses (user_id, house, street, area, pincode, landmark, is_default)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id`,
-    [customer.id, '12-3-45', 'MG Road', 'Kukatpally', SERVICEABLE_PINCODE, 'Near Metro', true]
-  );
-  console.log(`  address: created (${SERVICEABLE_PINCODE}) id=${res.rows[0].id}`);
-}
-
-async function seedProducts() {
-  // Upsert by name so re-running adds new fruits without duplicating existing
-  // ones. Price/availability/sort_order are refreshed to the seed values.
-  // sort_order = array index, so popular fruits (listed first) load first.
-  for (let i = 0; i < PRODUCTS.length; i++) {
-    const p = PRODUCTS[i];
-    await pool.query(
-      `INSERT INTO products (name, price_per_kg, available, sort_order)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (name) DO UPDATE
-         SET price_per_kg = EXCLUDED.price_per_kg,
-             available    = EXCLUDED.available,
-             sort_order   = EXCLUDED.sort_order`,
-      [p.name, p.price_per_kg, p.available, i]
+  await client.query("DELETE FROM product_variants WHERE product_id=$1", [
+    product.id,
+  ]);
+  for (const [unit_type, unit_quantity, unit_label, price] of variants)
+    await client.query(
+      "INSERT INTO product_variants (product_id,unit_type,unit_quantity,unit_label,price,sort_order) VALUES ($1,$2,$3,$4,$5,$6)",
+      [product.id, unit_type, unit_quantity, unit_label, price, unit_quantity]
     );
-  }
-  console.log(`  products: upserted ${PRODUCTS.length}`);
 }
-
-async function main() {
-  console.log('Seeding database...');
+async function seed() {
+  const client = await pool.connect();
   try {
-    const users = await seedUsers();
-    await seedAddress(users.customer);
-    await seedProducts();
-    console.log('\n✅ Seed complete.');
-  } catch (err) {
-    console.error('\n❌ Seed failed:', err.message);
-    process.exitCode = 1;
+    await client.query("BEGIN");
+    const hash = await bcrypt.hash("cvenki@123", 10);
+    await client.query(
+      `INSERT INTO users (name,phone,password_hash,role) VALUES ('Admin','9640082321',$1,'admin') ON CONFLICT (phone) DO UPDATE SET role='admin',password_hash=EXCLUDED.password_hash`,
+      [hash]
+    );
+    const categoryIds = {};
+    for (const [name, slug, sort_order] of [
+      ["Fruits", "fruits", 10],
+      ["Freshly Chopped", "freshly-chopped", 20],
+      ["Vegetables", "vegetables", 30],
+    ]) {
+      const {
+        rows: [category],
+      } = await client.query(
+        `INSERT INTO categories (name,slug,sort_order) VALUES ($1,$2,$3) ON CONFLICT (slug) DO UPDATE SET name=EXCLUDED.name,sort_order=EXCLUDED.sort_order RETURNING id`,
+        [name, slug, sort_order]
+      );
+      categoryIds[slug] = category.id;
+    }
+    let order = 10;
+    for (const [name, price] of Object.entries(fruitPrices)) {
+      const variants =
+        name === "Banana"
+          ? [
+              ["count", 6, "Half Dozen", 30],
+              ["count", 12, "Dozen", 60],
+            ]
+          : name === "Coconut"
+          ? [["count", 1, "1 Piece", 45]]
+          : weightVariants(price);
+      await upsertProduct(client, categoryIds.fruits, name, variants, order++);
+    }
+    order = 10;
+    for (const [name, [small, large]] of Object.entries(choppedPrices))
+      await upsertProduct(
+        client,
+        categoryIds["freshly-chopped"],
+        `Chopped ${name}`,
+        [
+          ["weight", 250, "250g", small],
+          ["weight", 500, "500g", large],
+        ],
+        order++
+      );
+    for (const [name, variants, sort] of [
+      [
+        "Tomato",
+        [
+          ["weight", 500, "500g", 20],
+          ["weight", 1000, "1kg", 40],
+        ],
+        10,
+      ],
+      [
+        "Potato",
+        [
+          ["weight", 500, "500g", 18],
+          ["weight", 1000, "1kg", 35],
+        ],
+        20,
+      ],
+      [
+        "Carrot",
+        [
+          ["weight", 500, "500g", 30],
+          ["weight", 1000, "1kg", 55],
+        ],
+        30,
+      ],
+      ["Coriander", [["bunch", 1, "1 Bunch", 20]], 40],
+    ])
+      await upsertProduct(client, categoryIds.vegetables, name, variants, sort);
+    await client.query("COMMIT");
+    console.log("✅ Catalog seed complete");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
   } finally {
+    client.release();
     await pool.end();
   }
 }
-
-main();
+seed().catch((error) => {
+  console.error("❌ Seed failed:", error.message);
+  process.exit(1);
+});

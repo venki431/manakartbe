@@ -2,10 +2,12 @@ const orderSchemas = {
   OrderItem: {
     type: "object",
     properties: {
-      product_id: { type: "string", format: "uuid" },
-      name: { type: "string" },
+      productId: { type: "string", format: "uuid" },
+      variantId: { type: "string", format: "uuid" },
+      productName: { type: "string" },
+      variantLabel: { type: "string" },
       quantity: { type: "number", example: 2 },
-      price_per_kg: { type: "integer", example: 120 }
+      unitPrice: { type: "integer", example: 120 }
     }
   },
 
@@ -42,7 +44,8 @@ const orderSchemas = {
         items: {
           type: "object",
           properties: {
-            product_id: { type: "string", format: "uuid" },
+            productId: { type: "string", format: "uuid" },
+            variantId: { type: "string", format: "uuid" },
             quantity: { type: "number" }
           }
         }
