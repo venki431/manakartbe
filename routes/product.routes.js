@@ -6,6 +6,7 @@ import { requireAdmin } from '../middlewares/admin.middleware.js';
 const router = express.Router();
 
 router.get('/', productController.getProducts);
+router.get('/categories', productController.getCategories);
 router.post('/', authenticate, requireAdmin, productController.createProduct);
 router.put('/:id', authenticate, requireAdmin, productController.updateProduct);
 router.delete('/:id', authenticate, requireAdmin, productController.deleteProduct);

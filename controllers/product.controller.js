@@ -8,6 +8,11 @@ const getProducts = async (req, res, next) => {
     next(error);
   }
 };
+const getCategories = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await productService.getCategories() });
+  } catch (error) { next(error); }
+};
 
 const createProduct = async (req, res, next) => {
   try {
@@ -38,7 +43,7 @@ const deleteProduct = async (req, res, next) => {
 
 
 export default {
-    getProducts,    
+    getProducts, getCategories,
     createProduct,
     updateProduct,
     deleteProduct

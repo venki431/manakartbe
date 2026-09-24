@@ -41,31 +41,31 @@ const orderService = {
 
     /* ---------------- OPTIMIZED PRODUCT FETCH ---------------- */
 
-    const productIds = items.map(item => item.id);
-
-    const productsResult = await pool.query(
-      "SELECT id, price_per_kg FROM products WHERE id = ANY($1)",
-      [productIds]
-    );
-
-    const products = productsResult.rows;
-
-    if (products.length !== productIds.length) {
-      throw new Error("Some products are invalid");
+    const productIds = [...new Set(items.map(item => item.productId))];
+    const variantIds = [...new Set(items.map(item => item.variantId))];
+    if (productIds.some((id) => !id) || variantIds.some((id) => !id)) {
+      throw new Error("Each cart item requires a product and variant");
     }
+    const productsResult = await pool.query(
+      `SELECT p.id AS product_id, p.name AS product_name, p.available AS product_available,
+              v.id AS variant_id, v.unit_label, v.price, v.available AS variant_available
+       FROM products p JOIN product_variants v ON v.product_id = p.id
+       WHERE p.id = ANY($1::uuid[]) AND v.id = ANY($2::uuid[])`,
+      [productIds, variantIds]
+    );
 
     /* ---------------- CALCULATE SUBTOTAL ---------------- */
 
     let subtotal = 0;
-
-    for (const item of items) {
-      const product = products.find(p => p.id === item.id);
-
-      const unitPrice =
-        (product.price_per_kg * item.unitGrams) / 1000;
-
-      subtotal += Math.round(unitPrice) * item.quantity;
-    }
+    const orderItems = items.map((item) => {
+      const quantity = Number(item.quantity);
+      const catalogItem = productsResult.rows.find((row) => row.product_id === item.productId && row.variant_id === item.variantId);
+      if (!catalogItem) throw new Error("Product variant is invalid");
+      if (!catalogItem.product_available || !catalogItem.variant_available) throw new Error(`${catalogItem.product_name} is unavailable`);
+      if (!Number.isInteger(quantity) || quantity <= 0) throw new Error("Quantity must be a positive integer");
+      subtotal += catalogItem.price * quantity;
+      return { productId: catalogItem.product_id, variantId: catalogItem.variant_id, productName: catalogItem.product_name, variantLabel: catalogItem.unit_label, unitPrice: catalogItem.price, quantity };
+    });
 
     /* ---------------- BUSINESS RULES ---------------- */
 
@@ -94,7 +94,7 @@ const orderService = {
       [
         userId,
         address_id,
-        JSON.stringify(items),
+        JSON.stringify(orderItems),
         subtotal,
         deliveryCharge,
         grandTotal,
@@ -117,7 +117,7 @@ const orderService = {
 
 
     /* ---------------- NOTIFY ADMIN ---------------- */
-    const itemNames = items.map(i => i.name).join(", ");
+    const itemNames = orderItems.map(i => i.productName).join(", ");
     await notificationService.create({
       type: "new_order",
       title: "New Order Received",

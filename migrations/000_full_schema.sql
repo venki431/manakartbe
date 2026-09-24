@@ -1,184 +1,77 @@
--- ============================================================================
--- Manakart Backend — Full Database Schema (single-file setup)
--- ----------------------------------------------------------------------------
--- Reconstructed from the backend source (services, controllers, migrations).
--- Run this ONCE against a fresh Postgres/Supabase database to recreate every
--- table, constraint, and index the app relies on.
---
--- Usage:
---   psql "$DATABASE_URL" -f migrations/000_full_schema.sql
---   -- or paste into the Supabase SQL editor
---
--- Idempotent: safe to re-run (uses IF NOT EXISTS everywhere).
--- ============================================================================
-
-DROP TABLE IF EXISTS users CASCADE;
-DROP TABLE IF EXISTS addresses CASCADE;
-DROP TABLE IF EXISTS products CASCADE;
-DROP TABLE IF EXISTS orders CASCADE;
-DROP TABLE IF EXISTS notifications CASCADE;
-
-
--- Needed for gen_random_uuid(). On Supabase this is usually already enabled.
+-- Manakart demo schema. This script deliberately rebuilds the demo database.
+-- Do not run it against production data without taking a backup first.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- ----------------------------------------------------------------------------
--- 1. USERS
---    Referenced by: auth.controller.js, user.service.js
--- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS users (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name          VARCHAR(255) NOT NULL,
-  phone         VARCHAR(10)  NOT NULL UNIQUE,   -- validated as 10 digits in code
-  password_hash TEXT         NOT NULL,          -- bcrypt hash
-  role          VARCHAR(20)  NOT NULL DEFAULT 'customer', -- 'customer' | 'admin'
-  created_at    TIMESTAMP    NOT NULL DEFAULT NOW()
-);
+DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS product_variants CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
+DROP TABLE IF EXISTS categories CASCADE;
+DROP TABLE IF EXISTS addresses CASCADE;
+DROP TABLE IF EXISTS password_reset_otps CASCADE;
+DROP TABLE IF EXISTS password_reset_requests CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
 
--- ----------------------------------------------------------------------------
--- 2. ADDRESSES
---    Referenced by: user.service.js, order.service.js
--- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS addresses (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  house      VARCHAR(255) NOT NULL,
-  street     VARCHAR(255) NOT NULL,
-  area       VARCHAR(255) NOT NULL,
-  pincode    VARCHAR(10)  NOT NULL,
-  landmark   TEXT,
-  latitude   DOUBLE PRECISION,   -- captured GPS location (with user consent)
-  longitude  DOUBLE PRECISION,
-  is_default BOOLEAN NOT NULL DEFAULT false,
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL,
+  phone VARCHAR(10) NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+  role VARCHAR(20) NOT NULL DEFAULT 'customer', email VARCHAR(255) UNIQUE,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
-
--- Add GPS columns to pre-existing addresses tables.
-ALTER TABLE addresses ADD COLUMN IF NOT EXISTS latitude  DOUBLE PRECISION;
-ALTER TABLE addresses ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
-
-CREATE INDEX IF NOT EXISTS idx_addresses_user_id ON addresses(user_id);
-
--- ----------------------------------------------------------------------------
--- 3. PRODUCTS
---    Referenced by: product.service.js, order.service.js
--- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS products (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name         VARCHAR(255) NOT NULL UNIQUE,
-  price_per_kg INTEGER NOT NULL,          -- stored in ₹ (integer rupees)
-  available    BOOLEAN NOT NULL DEFAULT true,
-  sort_order   INTEGER NOT NULL DEFAULT 100,  -- lower = shown first (popularity)
-  created_at   TIMESTAMP NOT NULL DEFAULT NOW()
+CREATE TABLE addresses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  house VARCHAR(255) NOT NULL, street VARCHAR(255) NOT NULL, area VARCHAR(255) NOT NULL,
+  pincode VARCHAR(10) NOT NULL, landmark TEXT, latitude DOUBLE PRECISION, longitude DOUBLE PRECISION,
+  is_default BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
-
--- Ensure the UNIQUE(name) constraint exists even on pre-existing tables
--- (CREATE TABLE IF NOT EXISTS won't add it to an already-created table).
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'products_name_key'
-  ) THEN
-    ALTER TABLE products ADD CONSTRAINT products_name_key UNIQUE (name);
-  END IF;
-END $$;
-
--- Add sort_order to pre-existing products tables.
-ALTER TABLE products ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 100;
-
--- ----------------------------------------------------------------------------
--- 4. ORDERS
---    Referenced by: order.service.js, order.controller.js
---    'items' is stored as a JSON snapshot of the cart at checkout time.
--- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS orders (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  address_id      UUID REFERENCES addresses(id) ON DELETE SET NULL,
-  items           JSONB NOT NULL,              -- JSON.stringify(cart items)
-  subtotal        INTEGER NOT NULL,
-  delivery_charge INTEGER NOT NULL DEFAULT 0,
-  grand_total     INTEGER NOT NULL,
-  pincode         VARCHAR(10),
-  status          VARCHAR(20) NOT NULL DEFAULT 'pending',
-                  -- pending | confirmed | shipped | delivered | cancelled
-  admin_note      TEXT,
-  delivery_date   DATE,                    -- evening the order is scheduled for
-  delivery_slot   VARCHAR(20) DEFAULT 'evening', -- delivery window key
-  created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Add delivery scheduling columns to pre-existing orders tables.
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_date DATE;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_slot VARCHAR(20) DEFAULT 'evening';
-
-CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
-CREATE INDEX IF NOT EXISTS idx_orders_status  ON orders(status);
-CREATE INDEX IF NOT EXISTS idx_orders_delivery_date ON orders(delivery_date);
-
--- ----------------------------------------------------------------------------
--- 5. NOTIFICATIONS
---    Referenced by: notification.service.js
---    user_id IS NULL  -> admin notification
---    user_id IS SET   -> customer notification
--- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS notifications (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  type       VARCHAR(50)  NOT NULL,   -- 'new_order', 'order_placed', 'order_confirmed', ...
-  title      VARCHAR(255) NOT NULL,
-  message    TEXT,
-  order_id   UUID REFERENCES orders(id) ON DELETE CASCADE,
-  user_id    UUID REFERENCES users(id) ON DELETE CASCADE, -- NULL = admin notification
-  is_read    BOOLEAN NOT NULL DEFAULT false,
+CREATE INDEX idx_addresses_user_id ON addresses(user_id);
+CREATE TABLE categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL,
+  slug VARCHAR(255) NOT NULL UNIQUE, description TEXT, image_url TEXT,
+  available BOOLEAN NOT NULL DEFAULT true, sort_order INTEGER NOT NULL DEFAULT 100,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_notifications_is_read    ON notifications(is_read);
-CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_notifications_user_id    ON notifications(user_id);
-
-
-CREATE TABLE IF NOT EXISTS password_reset_otps (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-  user_id UUID NOT NULL
-    REFERENCES users(id)
-    ON DELETE CASCADE,
-
-  otp_hash TEXT NOT NULL,
-
-  expires_at TIMESTAMP NOT NULL,
-
-  attempts INTEGER NOT NULL DEFAULT 0,
-
-  verified BOOLEAN NOT NULL DEFAULT false,
-
+CREATE TABLE products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), category_id UUID NOT NULL REFERENCES categories(id),
+  name VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL UNIQUE, description TEXT, image_url TEXT,
+  available BOOLEAN NOT NULL DEFAULT true, sort_order INTEGER NOT NULL DEFAULT 100,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_products_category_id ON products(category_id);
+CREATE INDEX idx_products_available ON products(available);
+CREATE TABLE product_variants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  unit_type VARCHAR(20) NOT NULL CHECK (unit_type IN ('weight', 'count', 'bunch', 'packet', 'volume')),
+  unit_quantity NUMERIC NOT NULL CHECK (unit_quantity > 0), unit_label VARCHAR(100) NOT NULL,
+  price INTEGER NOT NULL CHECK (price >= 0), available BOOLEAN NOT NULL DEFAULT true,
+  sort_order INTEGER NOT NULL DEFAULT 100, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE(product_id, unit_type, unit_quantity)
+);
+CREATE INDEX idx_product_variants_product_id ON product_variants(product_id);
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  address_id UUID REFERENCES addresses(id) ON DELETE SET NULL, items JSONB NOT NULL,
+  subtotal INTEGER NOT NULL, delivery_charge INTEGER NOT NULL DEFAULT 0, grand_total INTEGER NOT NULL,
+  pincode VARCHAR(10), status VARCHAR(20) NOT NULL DEFAULT 'pending', admin_note TEXT,
+  delivery_date DATE, delivery_slot VARCHAR(20) DEFAULT 'evening',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), type VARCHAR(50) NOT NULL, title VARCHAR(255) NOT NULL,
+  message TEXT, order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE, is_read BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_password_reset_otps_user_id
-  ON password_reset_otps(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_password_reset_otps_expires_at
-  ON password_reset_otps(expires_at);
-
-
-CREATE TABLE IF NOT EXISTS password_reset_requests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-  user_id UUID NOT NULL
-    REFERENCES users(id)
-    ON DELETE CASCADE,
-
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE TABLE password_reset_otps (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  otp_hash TEXT NOT NULL, expires_at TIMESTAMP NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+  verified BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE TABLE password_reset_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_password_reset_requests_user_time
-  ON password_reset_requests(user_id, created_at DESC);
-
--- ============================================================================
--- OPTIONAL: promote a user to admin (needed for admin-only endpoints).
--- Sign up via the API first, then run:
---   UPDATE users SET role = 'admin' WHERE phone = '9999999999';
--- ============================================================================
